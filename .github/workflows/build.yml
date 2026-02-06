@@ -1,58 +1,64 @@
-name: Flutter CI - Build on Push
+name: Flutter Build Pipeline
 
 on:
   push:
-    branches: [main, master, dev]
+    branches: [main, dev, 'release/*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:  # 重要：添加手动触发
+
+permissions:
+  contents: read
 
 jobs:
-  build-android:
+  validate:
+    name: "验证与构建"
     runs-on: ubuntu-latest
     
-    permissions:  # ⭐ 关键：设置工作流权限
-      contents: write    # 允许写入内容（推送、创建标签等）
-      packages: read     # 允许读取包
-      actions: read      # 允许读取Actions信息
-    
     steps:
-      # 第一步：正确检出代码（解决权限问题）
-      - name: 📥 检出代码（带完整权限）
+      - name: 📥 检出代码
         uses: actions/checkout@v3
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}  # 使用 GitHub 提供的 token
-          fetch-depth: 0                      # 获取完整历史
-          lfs: false                          # 按需开启 Git LFS
+          fetch-depth: 1
           
-      # 可选：检查检出结果
-      - name: 🔍 验证代码检出
-        run: |
-          echo "当前目录内容："
-          ls -la
-          echo "Git 仓库状态："
-          git status
-          echo "远程仓库："
-          git remote -v
-          
-      # 后续步骤保持不变...
-      - name: ☕ 设置 Java 环境
-        uses: actions/setup-java@v3
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-          
-      - name: 🐦 设置 Flutter 环境
+      - name: 🐦 安装 Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: 'stable'
-          cache: true
+          flutter-version: '3.22.0'  # 指定稳定版本
+          channel: 'stable'
+          
+      - name: 📊 环境信息
+        run: |
+          flutter --version
+          echo "Dart SDK 版本: $(dart --version)"
           
       - name: 📦 获取依赖
         run: flutter pub get
         
-      - name: 🏗️ 构建 Android APK
-        run: flutter build apk --release
+      - name: 🔍 代码分析
+        run: flutter analyze
         
-      - name: 💾 上传构建产物
+      - name: 🧪 运行测试
+        run: flutter test
+        
+      - name: 🏗️ 构建 Android APK
+        run: |
+          flutter build apk --release --no-tree-shake-icons
+          echo "✅ APK 构建完成"
+          ls -lh build/app/outputs/flutter-apk/
+          
+      - name: 📁 上传产物
+        if: success()
         uses: actions/upload-artifact@v3
         with:
-          name: flutter-apk
-          path: build/app/outputs/flutter-apk/*.apk 
+          name: android-apk
+          path: build/app/outputs/flutter-apk/*.apk
+          
+      - name: 📋 生成报告
+        if: always()
+        run: |
+          echo "## 构建报告" >> $GITHUB_STEP_SUMMARY
+          echo "- **状态**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **触发方式**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **分支**: ${{ github.ref }}" >> $GITHUB_STEP_SUMMARY
+          echo "✅ 查看详细日志请点击上方步骤" >> $GITHUB_STEP_SUMMARY
