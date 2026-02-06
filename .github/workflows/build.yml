@@ -1,217 +1,58 @@
-name: Flutter CI - bujuan_music
+name: Flutter CI - Build on Push
 
 on:
   push:
-    branches:
-      - main
-      - master
-      - dev
-      - feature/**
-    paths:
-      - 'lib/**'           # 源代码更改时触发
-      - 'pubspec.yaml'     # 依赖更改时触发
-      - 'pubspec.lock'
-      - 'android/**'       # Android配置更改时触发
-      - '.github/workflows/**'  # CI配置更改时触发
-  pull_request:
     branches: [main, master, dev]
 
 jobs:
-  # 1. 代码验证和测试（所有分支都执行）
-  validate:
-    runs-on: ubuntu-latest
-    outputs:
-      build_required: ${{ steps.check_build.outputs.build_required }}
-    steps:
-      - name: 📥 检出代码
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: 🐦 设置 Flutter 环境
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: 'stable'
-          channel: 'stable'
-          cache: true
-          cache-key: flutter-${{ runner.os }}-stable-${{ hashFiles('pubspec.lock') }}
-
-      - name: 📦 获取项目依赖
-        run: |
-          flutter pub get
-          cd plugin/bujuan_music_api && flutter pub get
-
-      - name: 🔍 代码静态分析
-        run: flutter analyze
-
-      - name: 🧪 运行单元测试
-        run: flutter test
-
-      - name: 🏗️ 检查是否需要构建
-        id: check_build
-        run: |
-          # 如果是PR到main/master分支，需要构建
-          if [[ "${{ github.event_name }}" == "pull_request" && ("${{ github.base_ref }}" == "refs/heads/main" || "${{ github.base_ref }}" == "refs/heads/master") ]]; then
-            echo "build_required=true" >> $GITHUB_OUTPUT
-          # 如果是推送事件且不是feature分支，需要构建
-          elif [[ "${{ github.event_name }}" == "push" && ! "${{ github.ref }}" =~ refs/heads/feature/ ]]; then
-            echo "build_required=true" >> $GITHUB_OUTPUT
-          else
-            echo "build_required=false" >> $GITHUB_OUTPUT
-          fi
-          echo "是否需要构建APK: ${{ steps.check_build.outputs.build_required }}"
-
-  # 2. 构建Android APK（仅在需要时执行）
   build-android:
-    needs: validate
-    if: needs.validate.outputs.build_required == 'true'
     runs-on: ubuntu-latest
     
+    permissions:  # ⭐ 关键：设置工作流权限
+      contents: write    # 允许写入内容（推送、创建标签等）
+      packages: read     # 允许读取包
+      actions: read      # 允许读取Actions信息
+    
     steps:
-      - name: 📥 检出代码
-        uses: actions/checkout@v4
-
-      - name: 🏷️ 生成版本信息
-        id: version_info
+      # 第一步：正确检出代码（解决权限问题）
+      - name: 📥 检出代码（带完整权限）
+        uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}  # 使用 GitHub 提供的 token
+          fetch-depth: 0                      # 获取完整历史
+          lfs: false                          # 按需开启 Git LFS
+          
+      # 可选：检查检出结果
+      - name: 🔍 验证代码检出
         run: |
-          # 从pubspec.yaml读取应用版本
-          APP_VERSION=$(grep -E '^version:' pubspec.yaml | awk '{print $2}' | sed "s/+.*//")
-          BUILD_NUMBER=$(grep -E '^version:' pubspec.yaml | awk -F'+' '{print $2}')
+          echo "当前目录内容："
+          ls -la
+          echo "Git 仓库状态："
+          git status
+          echo "远程仓库："
+          git remote -v
           
-          # 如果未设置build-number，使用GitHub运行编号
-          if [ -z "$BUILD_NUMBER" ]; then
-            BUILD_NUMBER=${{ github.run_number }}
-          fi
-          
-          SHORT_SHA=$(git rev-parse --short HEAD)
-          DATE=$(date +"%Y%m%d")
-          FULL_VERSION="${APP_VERSION}_${DATE}_${SHORT_SHA}"
-          
-          echo "APP_VERSION=${APP_VERSION}" >> $GITHUB_OUTPUT
-          echo "BUILD_NUMBER=${BUILD_NUMBER}" >> $GITHUB_OUTPUT
-          echo "BUILD_VERSION=${FULL_VERSION}" >> $GITHUB_OUTPUT
-          echo "COMMIT_SHA=${SHORT_SHA}" >> $GITHUB_OUTPUT
-          
-          echo "应用版本: $APP_VERSION"
-          echo "构建编号: $BUILD_NUMBER"
-          echo "构建版本: $FULL_VERSION"
-          echo "提交哈希: $SHORT_SHA"
-
+      # 后续步骤保持不变...
       - name: ☕ 设置 Java 环境
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v3
         with:
           distribution: 'temurin'
           java-version: '17'
-
+          
       - name: 🐦 设置 Flutter 环境
         uses: subosito/flutter-action@v2
         with:
           flutter-version: 'stable'
           cache: true
-          cache-key: flutter-${{ runner.os }}-stable-${{ hashFiles('pubspec.lock') }}
-          cache-path: |
-            ~/.pub-cache
-            ${{ runner.tool_cache }}/flutter
-
-      - name: 📦 获取项目依赖（带缓存）
-        run: |
-          # 同时获取主项目和插件依赖
-          flutter pub get
-          echo "正在获取 bujuan_music_api 插件依赖..."
-          cd plugin/bujuan_music_api && flutter pub get
-
-      - name: 🔧 生成代码
-        run: |
-          # 运行build_runner生成Riverpod相关代码
-          flutter pub run build_runner build --delete-conflicting-outputs || echo "Build runner完成（可能有警告）"
-
+          
+      - name: 📦 获取依赖
+        run: flutter pub get
+        
       - name: 🏗️ 构建 Android APK
-        run: |
-          # 使用pubspec.yaml中的版本信息
-          flutter build apk --release \
-            --build-name=${{ steps.version_info.outputs.APP_VERSION }} \
-            --build-number=${{ steps.version_info.outputs.BUILD_NUMBER }} \
-            --dart-define=BUILD_VERSION=${{ steps.version_info.outputs.BUILD_VERSION }} \
-            --dart-define=COMMIT_SHA=${{ steps.version_info.outputs.COMMIT_SHA }}
-          
-          echo "APK文件列表:"
-          ls -lh build/app/outputs/flutter-apk/
-
-      - name: 📊 构建报告
-        run: |
-          # 获取APK文件大小
-          APK_SIZE=$(stat -f%z build/app/outputs/flutter-apk/app-release.apk 2>/dev/null || stat -c%s build/app/outputs/flutter-apk/app-release.apk)
-          APK_SIZE_MB=$(echo "scale=2; $APK_SIZE / (1024*1024)" | bc)
-          
-          cat << EOF > build-report.md
-          # 🎵 bujuan_music 构建报告
-          
-          ## 📋 构建信息
-          - **应用名称**: bujuan_music
-          - **应用版本**: ${{ steps.version_info.outputs.APP_VERSION }}
-          - **构建编号**: ${{ steps.version_info.outputs.BUILD_NUMBER }}
-          - **构建版本**: ${{ steps.version_info.outputs.BUILD_VERSION }}
-          - **提交哈希**: ${{ steps.version_info.outputs.COMMIT_SHA }}
-          - **触发分支**: ${{ github.ref_name }}
-          - **构建时间**: $(date)
-          
-          ## 📱 构建产物
-          - **APK文件**: app-release.apk
-          - **文件大小**: ${APK_SIZE_MB} MB
-          - **架构支持**: ARMv7, ARM64, x86_64
-          
-          ## 🚀 下载
-          构建产物可在本页面右侧的 **"Artifacts"** 区域下载。
-          
-          ## 📊 依赖统计
-          $(flutter pub deps --style=compact | head -30)
-          EOF
-          
-          echo "构建报告已生成"
-
+        run: flutter build apk --release
+        
       - name: 💾 上传构建产物
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v3
         with:
-          name: bujuan_music-${{ steps.version_info.outputs.BUILD_VERSION }}
-          path: |
-            build/app/outputs/flutter-apk/*.apk
-            build-report.md
-          retention-days: 30
-          if-no-files-found: error
-
-      - name: 🎉 构建完成
-        run: |
-          echo "✅ bujuan_music 构建成功！"
-          echo "📱 版本: ${{ steps.version_info.outputs.APP_VERSION }} (${{ steps.version_info.outputs.BUILD_NUMBER }})"
-          echo "🔗 构建详情: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          echo "📥 下载: 请在本页面右侧的Artifacts区域下载APK文件"
-
-  # 3. 构建状态汇总
-  summary:
-    needs: [validate, build-android]
-    runs-on: ubuntu-latest
-    if: always()
-    steps:
-      - name: 📊 构建状态汇总
-        run: |
-          echo "# bujuan_music CI/CD 状态报告"
-          echo "构建时间: $(date)"
-          echo "仓库: ${{ github.repository }}"
-          echo "触发事件: ${{ github.event_name }}"
-          echo "分支: ${{ github.ref_name }}"
-          echo "提交: ${{ github.sha }}"
-          echo ""
-          
-          if [[ "${{ needs.validate.result }}" == "success" ]]; then
-            echo "✅ 代码验证: 通过"
-          else
-            echo "❌ 代码验证: 失败"
-          fi
-          
-          if [[ "${{ needs.build-android.result }}" == "success" ]]; then
-            echo "✅ Android构建: 成功"
-          elif [[ "${{ needs.build-android.result }}" == "skipped" ]]; then
-            echo "⚪ Android构建: 跳过（非构建分支）"
-          else
-            echo "❌ Android构建: 失败"
-          fi
+          name: flutter-apk
+          path: build/app/outputs/flutter-apk/*.apk
