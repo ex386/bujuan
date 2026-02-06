@@ -1,5 +1,11 @@
 name: Flutter Build Pipeline
 
+permissions:
+  contents: write  # 允许写入仓库内容（如提交、创建标签）
+  packages: read   # 允许读取包
+  actions: read    # 允许读取其他Actions信息
+  checks: write    # 如果需要向提交状态报告，可添加此项
+ 
 on:
   push:
     branches: [main, dev, 'release/*']
