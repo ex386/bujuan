@@ -61,4 +61,4 @@ jobs:
           echo "- **状态**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
           echo "- **触发方式**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
           echo "- **分支**: ${{ github.ref }}" >> $GITHUB_STEP_SUMMARY
-          echo "✅ 查看详细日志请点击上方步骤" >> $GITHUB_STEP_SUMMARY
+          echo "✅ 查看详细日志请点击上方步骤" >> $GITHUB_STEP_SUMMARY 
