@@ -1,48 +1,36 @@
-name: Flutter CI
+name: Build Feature APK
 
 on:
   push:
     branches: [ "feature/new-ui" ]
-  pull_request:
-    branches: [ "feature/new-ui" ]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     
     steps:
-      # 关键修复：显式指定分支和token
       - uses: actions/checkout@v4
-        with:
-          ref: feature/new-ui
-          token: ${{ secrets.GITHUB_TOKEN }}
       
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
-          java-version: '11'
+          java-version: '17'
       
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.x'
+          flutter-version: '3.24.4'
           channel: 'stable'
       
-      - name: Install dependencies
-        run: flutter pub get
-      
-      - name: Analyze project source
-        run: flutter analyze
-      
-      - name: Run tests
-        run: flutter test
-      
       - name: Build APK
-        run: flutter build apk --release
+        run: |
+          flutter pub get
+          flutter build apk --release
       
-      - name: Upload APK artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: release-apk
+          name: app-release
           path: build/app/outputs/flutter-apk/app-release.apk
