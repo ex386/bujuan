@@ -11,60 +11,35 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      # 1. 检出代码
       - uses: actions/checkout@v4
       
-      # 2. 设置Java环境（Flutter Android构建需要）
       - name: Setup Java
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4  # 也建议升级到 v4
         with:
           distribution: 'zulu'
           java-version: '11'
       
-      # 3. 设置Flutter（替换Dart setup）
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.x' # 或指定具体版本如 '3.16.0'
+          flutter-version: '3.x'
           channel: 'stable'
       
-      # 4. 验证Flutter安装
-      - name: Verify Flutter
-        run: flutter doctor -v
-      
-      # 5. 获取依赖
       - name: Install dependencies
         run: flutter pub get
       
-      # 6. 代码格式化检查
-      # - name: Verify formatting
-      #   run: dart format --output=none --set-exit-if-changed .
-      
-      # 7. 静态分析
       - name: Analyze project source
         run: flutter analyze
       
-      # 8. 运行测试
       - name: Run tests
         run: flutter test
       
-      # 9. 构建APK（可选）
       - name: Build APK
         run: flutter build apk --release
       
-      # 10. 构建IPA（仅在macOS上运行）
-      # - name: Build IPA
-      #   if: runner.os == 'macOS'
-      #   run: flutter build ios --release --no-codesign
-      
-      # 11. 上传构建产物（可选）
+      # ⚠️ 关键修复：v3 → v4
       - name: Upload APK artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4  # 从 v3 改为 v4
         with:
           name: release-apk
           path: build/app/outputs/flutter-apk/app-release.apk
-      # Your project will need to have tests in test/ and a dependency on
-      # package:test for this step to succeed. Note that Flutter projects will
-      # want to change this to 'flutter test'.
-      - name: Run tests
-        run: dart test
